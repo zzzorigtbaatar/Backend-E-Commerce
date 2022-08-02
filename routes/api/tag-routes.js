@@ -54,8 +54,47 @@ router.post('/', async (req, res) => {
     });
 });
 
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   // update a tag's name by its `id` value
+  Tag.update(req.body, {
+    where: {
+      id: req.params.id,
+    },
+  })
+    .then((tag) => {
+      // find all associated tags from ProductTag
+      return ProductTag.findAll({ where: { tag_id: req.params.id } });
+    })
+    .then((tagProducts) => {
+      // get list of current tag_ids
+      const tagProdIds = tagProducts.map(({ product_id }) => product_id);
+      // create filtered list of new tag_ids
+      const newProductTags = req.body.productIds
+        .filter((product_id) => !tagProdIds.includes(product_id))
+        .map((product_id) => {
+          return {
+            tag_id: req.params.id,
+            product_id,
+          };
+        });
+      // figure out which ones to remove
+      const productTagsToRemove = tagProducts
+        .filter(({ product_id }) => !req.body.productIds.includes(product_id))
+        .map(({ id }) => id);
+
+      // run both actions
+      return Promise.all([
+        ProductTag.destroy({ where: { id: productTagsToRemove } }),
+        ProductTag.bulkCreate(newProductTags),
+      ]);
+    })
+    .then((updatedProductTags) => {
+      res.json(updatedProductTags);
+    })
+    .catch((err) => {
+      console.log(err);
+      res.status(400).json(err);
+    });
 });
 
 router.delete('/:id', async (req, res) => {
